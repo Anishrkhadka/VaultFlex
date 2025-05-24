@@ -1,0 +1,35 @@
+# Environment
+.env
+__pycache__/
+*.pyc
+*.pyo
+
+# Streamlit
+.streamlit/config.toml
+.streamlit/*.json
+
+# VS Code
+.vscode/
+
+# Virtual envs
+.env/
+.venv/
+env/
+venv/
+
+# Data
+data/silver/*.json
+data/gold/**/*
+data/bronze/**/*.pdf
+data/bronze/**/*.docx
+data/bronze/**/*.md
+data/bronze/**/*.txt
+
+# Neo4j (if local data stored)
+import/
+logs/
+data/
+
+# OS
+.DS_Store
+Thumbs.db
