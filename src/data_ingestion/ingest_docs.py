@@ -20,7 +20,7 @@ import json
 import hashlib
 from pathlib import Path
 
-from src.config import get_scope_paths, CHUNK_SIZE, CHUNK_OVERLAP, HASH_TRACK_FILE
+from src.config import get_scope_paths, CHUNK_SIZE, CHUNK_OVERLAP, HASH_TRACK_FILE, EMBEDDING_MODEL
 from src.data_ingestion.graph_builder_llm import GraphBuilderLLM
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -167,7 +167,7 @@ def store_embeddings(chunks, output_dir):
 
     print(f"Storing {len(chunks)} chunks in FAISS...")
 
-    embedder = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embedder = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
     try:
         db = FAISS.from_documents(chunks, embedder)
