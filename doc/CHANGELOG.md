@@ -2,11 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-
 ---
+## [Unreleased] – 2025-06-20
 
-## [Unreleased]
+### Added
+- Minimalist **home page UI** with search bar and version/status footer
+- GUI-based **knowledge base selection** and **LLM model selector** on home page
+- `Chat Settings` expander in chat view to switch KB and model mid-session
+- "Add Knowledge Base" button with direct routing to ingestion page
+- First-question-from-home flow: preserves input and transitions into full chat
+- Hybrid RAG architecture:
+  - FAISS vector index (Gold layer)
+  - GraphRAG using Neo4j + DeepSeek LLM for triple extraction
+
+### Changed
+- Chat UI refactored for clarity and state preservation:
+  - Chat history now resets when changing KB or returning to home
+  - `st.chat_input` now always visible, even after initial query
+- Home page retains selected KB and LLM between views (no unwanted resets)
+- Restructured ingestion UI with clearer steps: scope selection, upload, progress, and delete
+- Internal docstrings and comments rewritten for clarity and maintainability
+
+### Fixed
+- Fixed issue where `GraphRAG` retrieval failed due to improper scope/model binding
+- Fixed bug where initial chat query would block further user input
+- Corrected handling of model and KB switching during an active session
+
+
+## [Unreleased] - 2025-06-14
 
 ### Added
 - Initial project structure with Streamlit-based UI

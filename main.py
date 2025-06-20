@@ -3,8 +3,8 @@ from src.__version__ import __version__
 from src.ui.data_ingest_ui import run_ingestion_ui
 from src.utils.service_status import get_backend_status
 from src.ui.chat_ui import run_chat_ui
-
-from src.config import LLM_MODEL
+import os
+from src.config import LLM_MODEL, GOLD_DIR
 
 st.set_page_config(page_title="Chatbot with GraphRAG and RAG", layout="centered")
 
@@ -100,7 +100,7 @@ def render_backend_status_footer():
     st.markdown(
         f"""
         <div style='text-align: center; color: gray; font-size: 0.8em; margin-top: 0.2em;'>
-            Version: {__version__} &nbsp; | &nbsp; Made with ❤️ for local-first AI
+            Version: {__version__} &nbsp; | &nbsp; Made with ❤️ VaultFlex
         </div>
         """,
         unsafe_allow_html=True
@@ -110,38 +110,70 @@ def render_backend_status_footer():
 
 # --- Main Views ---
 if st.session_state["view"] == "Welcome":
-    st.markdown("## 🤖 Lightweight Chatbot")
-    st.markdown("### with Memory and Retrieval-Augmentation")
+    KB_DIR = GOLD_DIR
 
-    st.markdown("---")
-    st.markdown("### 👋 Welcome to your local-first AI workspace")
+    # --- Top-left: Add Knowledge Base Button ---
+    if st.button("➕ Add Knowledge Base", key="add_kb_button"):
+        st.session_state["view"] = "Ingest"
+        st.rerun()
 
-    st.markdown("""
-- **Ingest and manage documents** into scoped datasets  
-- **Generate vector indexes** and build knowledge graphs  
-- **Chat with LLMs** over your own data using RAG  
-""")
+    # --- App Title ---
+    st.markdown("<div style='text-align: center;'>"
+                "<h1>VaultFlex</h1>"
+                "<p style='font-size:1.2em; color: gray;'>Chat with your knowledge</p>"
+                "</div>", unsafe_allow_html=True)
 
-    st.markdown("### What would you like to do?")
-    st.write("")  # spacing
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("📥 Ingest Data", use_container_width=True):
-            st.session_state["view"] = "Ingest"
-    with col2:
-        if st.button("💬 Open Chatbot", use_container_width=True):
+    # --- Load Knowledge Bases ---
+    if not os.path.exists(KB_DIR):
+        os.makedirs(KB_DIR)
+    available_kbs = [d for d in os.listdir(KB_DIR) if os.path.isdir(os.path.join(KB_DIR, d))]
+
+    # --- KB and Model Selection ---
+    selected_kb = st.session_state.get("kb")
+    selected_model = st.session_state.get("llm", "gemma3:latest")
+
+    # Update defaults if not set
+    if not selected_kb and available_kbs:
+        selected_kb = available_kbs[0]
+        st.session_state["kb"] = selected_kb
+
+    if "llm" not in st.session_state:
+        st.session_state["llm"] = selected_model
+
+
+    with st.container():
+        if available_kbs:
+            selected_kb = st.selectbox("📚 Select a Knowledge Base", options=available_kbs, index=available_kbs.index(selected_kb) if selected_kb in available_kbs else 0)
+        else:
+            selected_kb = None
+            st.warning("⚠️ No knowledge bases found. Please add one first.")
+
+        model_options = ["deepseek-r1:7b", "deepseek-r1:8b","gemma3:12b", "gemma3:latest"]
+        selected_model = st.selectbox("🧠 Select a Language Model", model_options, index=model_options.index(selected_model) if selected_model in model_options else 0)
+
+    # --- Question Form ---
+    with st.form("ask_form", clear_on_submit=True):
+        query = st.text_input("Ask a question...", placeholder="Ask a question...")
+        submitted = st.form_submit_button("Ask")
+
+    if submitted:
+        if not selected_kb:
+            st.error("Please upload a knowledge base before starting a chat.")
+        else:
+            st.session_state["kb"] = selected_kb
+            st.session_state["llm"] = selected_model
+            st.session_state["query"] = query
             st.session_state["view"] = "Chat"
+            st.rerun()
 
+    # --- Footer ---
+    render_backend_status_footer()
 elif st.session_state["view"] == "Ingest":
-    if st.button("🔙 Back to Welcome", use_container_width=True):
-        st.session_state["view"] = "Welcome"
     run_ingestion_ui()
+    render_backend_status_footer()
 
 elif st.session_state["view"] == "Chat":
-    if st.button("🔙 Back to Welcome", use_container_width=True):
-        st.session_state["view"] = "Welcome"
     run_chat_ui()
-  
-
+    
 # --- Footer ---
-render_backend_status_footer()
+
