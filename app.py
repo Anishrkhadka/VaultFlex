@@ -2,6 +2,7 @@ import streamlit as st
 from src.__version__ import __version__
 from src.ui.data_ingest_ui import run_ingestion_ui
 from src.utils.service_status import get_backend_status
+from src.ui.chat_ui import run_chat_ui
 
 from src.config import LLM_MODEL
 
@@ -139,6 +140,7 @@ elif st.session_state["view"] == "Ingest":
 elif st.session_state["view"] == "Chat":
     if st.button("🔙 Back to Welcome", use_container_width=True):
         st.session_state["view"] = "Welcome"
+    run_chat_ui()
   
 
 # --- Footer ---

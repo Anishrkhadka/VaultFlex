@@ -44,13 +44,17 @@ def get_scope_paths(scope_name: str) -> dict:
     }
 
 # LLM + Embedding Models
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat") 
 LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1:7b")  # LLM used via Ollama
+LLM_MODEL_EMBEDDING_MODEL = os.getenv("LLM_MODEL_EMBEDDING_MODEL", "gemma3:4b")  # LLM used via Ollama
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 
+
+
 # Chunking Parameters
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))          # Characters per chunk
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))    # Characters of overlap
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1000))          # Characters per chunk
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 200))    # Characters of overlap
 
 
 # Neo4j Configuration

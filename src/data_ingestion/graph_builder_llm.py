@@ -14,7 +14,8 @@ import json
 import requests
 import re
 from neo4j import GraphDatabase
-from src.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, LLM_MODEL
+from src.config import NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, LLM_MODEL_EMBEDDING_MODEL
+import time
 
 
 class GraphBuilderLLM:
@@ -22,7 +23,7 @@ class GraphBuilderLLM:
     Handles LLM-based knowledge triple extraction and insertion into a Neo4j graph.
     """
 
-    def __init__(self, uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASSWORD, model=LLM_MODEL):
+    def __init__(self, uri=NEO4J_URI, user=NEO4J_USER, password=NEO4J_PASSWORD, model=LLM_MODEL_EMBEDDING_MODEL):
         """
         Initialise GraphBuilder with Neo4j connection and model config.
 
@@ -40,15 +41,10 @@ class GraphBuilderLLM:
         self.driver.close()
 
     def insert_triple(self, subject, predicate, obj, scope):
-        """
-        Inserts a semantic triple into Neo4j with a scope tag.
+        subject = subject.strip().lower()
+        predicate = predicate.strip().lower()
+        obj = obj.strip().lower()
 
-        Args:
-            subject (str): Entity name
-            predicate (str): Relationship type
-            obj (str): Target entity name
-            scope (str): Dataset scope identifier
-        """
         with self.driver.session() as session:
             session.run(
                 """
@@ -62,81 +58,87 @@ class GraphBuilderLLM:
                 scope=scope
             )
 
-    def extract_triples_with_llm(self, text: str):
-        """
-        Extracts triples from a block of text using the local LLM via Ollama.
-
-        Args:
-            text (str): Chunk of document text
-
-        Returns:
-            list[dict]: Extracted triples with keys: subject, predicate, object
-        """
+    def extract_triples_with_llm(
+        self,
+        text: str,
+        max_retries: int = 1,
+        backoff_secs: float = 1.0
+    ) -> list[dict[str, str]]:
         prompt = f"""
-Extract semantic knowledge triples (subject, predicate, object) from the following text.
+    Extract semantic knowledge triples (subject, predicate, object) from the following text.
 
-Text:
-\"\"\"{text}\"\"\"
+    Text:
+    \"\"\"{text}\"\"\"
 
-Think aloud if needed, but at the end, respond only with a JSON array like:
-[
-  {{ "subject": "...", "predicate": "...", "object": "..." }},
-  ...
-]
+    At the end, return only a JSON array like this:
+    [
+    {{ "subject": "NASA", "predicate": "launched", "object": "Artemis I" }},
+    ...
+    ]
 
-Ensure the output is valid JSON. Do not use '+' for string concatenation.
-"""
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={"model": self.model, "prompt": prompt, "stream": False}
-        )
-        print(response)
+    Strictly return only the JSON array. No explanations or extra text.
+    """
+        raw_output = ""
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={"model": self.model, "prompt": prompt, "stream": False},
+                    timeout=30
+                )
+                print(response)
+                response.raise_for_status()
+                raw_output = response.json().get("response", "").strip()
+                print(raw_output)
 
-        result = response.json()
-        raw_output = result.get("response", "").strip()
+                if not raw_output:
+                    raise ValueError("Empty response from LLM")
 
-        if not raw_output:
-            print("[LLM] Empty response.")
-            return []
+                # Extract JSON array using regex
+                match = re.search(r"\[\s*{.*?}\s*\]", raw_output, re.DOTALL)
+                if not match:
+                    raise ValueError("No valid JSON array found in model output")
 
-        try:
-            # Extract first JSON array from raw output using regex
-            match = re.search(r"\[.*?\]", raw_output, re.DOTALL)
-            if not match:
-                raise ValueError("No JSON array found.")
+                json_str = match.group(0)
+                # Clean up any stray newlines or unexpected characters
+                json_str = json_str.replace('\n', ' ').replace('+', '').strip()
 
-            json_str = match.group(0)
+                triples = json.loads(json_str)
+                if not isinstance(triples, list):
+                    raise ValueError("Parsed JSON is not a list")
 
-            # Clean up malformed JSON (common LLM artifacts)
-            json_str = json_str.replace('+', '')
-            json_str = re.sub(r"\n\s*", " ", json_str)
+                # Filter to only well-formed triples
+                valid_triples = [
+                    t for t in triples
+                    if all(k in t and isinstance(t[k], str) for k in ("subject", "predicate", "object"))
+                ]
+                return valid_triples
 
-            triples = json.loads(json_str)
-            if not isinstance(triples, list):
-                raise ValueError("Expected a list of triples.")
+            except Exception as e:
+                print(f"[LLM] Attempt {attempt}/{max_retries} failed: {e}")
+                if attempt < max_retries:
+                    time.sleep(backoff_secs * attempt)  # simple exponential back-off
+                else:
+                    print(f"[LLM] All {max_retries} attempts failed. Giving up.")
 
-            return triples
+        # If we reach here, all attempts failed
+        return []
 
-        except Exception as e:
-            print(f"[LLM] JSON parse error: {e}")
-            print(f"[LLM] Raw output was:\n{raw_output}")
-            return []
 
     def process_chunks(self, chunks, scope):
-        """
-        Extracts and inserts knowledge triples from document chunks for a given scope.
-
-        Args:
-            chunks (list): List of LangChain Document objects
-            scope (str): Dataset scope to tag inserted relationships
-        """
+        total = 0
+        inserted = 0
         print(f"[GRAPH] Building graph for scope: {scope}")
         for chunk in chunks:
             text = chunk.page_content
             triples = self.extract_triples_with_llm(text)
+            total += len(triples)
             for triple in triples:
                 s = triple.get("subject")
                 p = triple.get("predicate")
                 o = triple.get("object")
                 if s and p and o:
                     self.insert_triple(s, p, o, scope)
+                    inserted += 1
+        print(f"[GRAPH] Extracted {total} triples, inserted {inserted}")
+

@@ -20,7 +20,7 @@ import shutil
 import streamlit as st
 from neo4j import GraphDatabase
 
-from src.data_ingestion.ingest_docs import ingest_scope
+from src.vector.embedder import ingest_scope
 from src.config import (
     BRONZE_DIR, HASH_TRACK_FILE,
     get_scope_paths, NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD
@@ -124,11 +124,31 @@ def run_ingestion_ui():
                     with open(file_path, "wb") as f:
                         f.write(file.read())
 
+                progress = st.progress(0)
+                status_text = st.empty()
+
                 try:
-                    ingest_scope(scope_name)
+                    from src.vector.embedder import chunk_scope, embed_scope, build_graph
+
+                    status_text.text("🔍 Step 1/3: Splitting documents into chunks...")
+                    chunks = chunk_scope(scope_name)
+                    progress.progress(0.33)
+
+                    status_text.text("📐 Step 2/3: Embedding & building FAISS index...")
+                    embed_scope(scope_name, chunks)
+                    progress.progress(0.66)
+
+                    status_text.text("🧠 Step 3/3: Extracting triples and inserting into graph...")
+                    build_graph(scope_name, chunks)
+                    progress.progress(1.0)
+
+                    status_text.text("✅ All done!")
                     st.success(f"Ingestion complete for new documents in '{scope_name}'.")
+
                 except Exception as e:
+                    status_text.text("❌ Ingestion failed.")
                     st.error(f"Failed to ingest documents: {e}")
+
 
     if scope_option != "<New Database>":
         with st.expander("⚠️ Danger Zone: Delete Dataset"):
@@ -138,3 +158,5 @@ def run_ingestion_ui():
                 st.success(f"Scope '{scope_option}' has been deleted along with {deleted_count} hash entries.")
                 st.session_state.clear()
                 st.success("Please refresh manually.")
+
+
