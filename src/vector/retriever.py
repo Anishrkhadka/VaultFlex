@@ -8,7 +8,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 import re
 import html
-
+import streamlit as st
 
 from src.config import (
     LLM_MODEL,
@@ -36,7 +36,7 @@ class KnowledgeBaseRetriever:
         """
         self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
 
-    def _get_model(self, prompt: str, model: str = LLM_MODEL, system_prompt: str = None) -> str:
+    def _get_model_no_memory(self, prompt: str, model: str = LLM_MODEL, system_prompt: str = None) -> str:
         url = "http://localhost:11434/api/chat"
         headers = {"Content-Type": "application/json"}
         messages = []
@@ -61,6 +61,47 @@ class KnowledgeBaseRetriever:
                 time.sleep((attempt + 1) * 1.5)
 
         return ""
+    def _get_model(
+        self,
+        prompt: str = None,
+        model: str = LLM_MODEL,
+        system_prompt: str = None,
+        history: list = None
+    ) -> str:
+        url = "http://localhost:11434/api/chat"
+        headers = {"Content-Type": "application/json"}
+
+        # Use history or start fresh
+        messages = history[:] if history else []
+
+        # Add system prompt only once (if not already in history)
+        if system_prompt and not any(m["role"] == "system" for m in messages):
+            messages.insert(0, {"role": "system", "content": system_prompt})
+
+        # Append current prompt
+        if prompt:
+            messages.append({"role": "user", "content": prompt})
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False
+        }
+
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, headers=headers, json=payload, timeout=30)
+                resp.raise_for_status()
+                reply = resp.json()["message"]["content"].strip()
+
+                # Optional: return both reply and messages for future continuation
+                return reply, messages + [{"role": "assistant", "content": reply}]
+            except Exception as e:
+                print(f"[LLM Error] Attempt {attempt + 1}: {e}")
+                time.sleep((attempt + 1) * 1.5)
+
+        return "", messages
+
 
     def _run_cypher(self, query: str, params: dict = None) -> List[Dict]:
         """
@@ -110,6 +151,24 @@ class KnowledgeBaseRetriever:
         sorted_terms = sorted(scores, key=lambda x: x[1], reverse=True)
         return [term.lower() for term, _ in sorted_terms[:top_k]]
 
+    def rewrite_question(self, question: str, model_name: str) -> str:
+        system_prompt = (
+            "You are an AI assistant that rewrites vague or informal user questions "
+            "into clearer, more specific ones suitable for knowledge base search. "
+            "Do not add any comments, explanations, or labels — return only the improved question as a single plain sentence."
+            )
+
+        
+        user_prompt = f"""
+        Original Question:
+        {question}
+
+        Improved Question (return only the question, no other text):
+        """
+
+        return self._get_model_no_memory(user_prompt, model=model_name, system_prompt=system_prompt).strip()
+
+
     def answer_with_keywords_and_chunks(self, question: str, scope: str, model_name:str) -> str:
         """
         Answers a question based on the knowledge base.
@@ -121,13 +180,17 @@ class KnowledgeBaseRetriever:
         Returns:
             The answer to the question.
         """
-        # Step 1: FAISS retrieval
+        #Step 1, rewrite the question 
+        # rewritten_question = self.rewrite_question(question, model_name)
+        # print(f"Rewritten Question: {rewritten_question}")
+
+        # Step 2: FAISS retrieval
         text_chunks = self.retrieve_docs(question, scope)
-        # Step 2: Extract keywords from FAISS chunks, not the question
+        # Step 3: Extract keywords from FAISS chunks, not the question
         keywords = self.extract_keywords(text_chunks)  # Pass text_chunks directly
         print(f"keywords: {keywords}")
 
-        # Step 3: Graph query using extracted keywords
+        # Step 4: Graph query using extracted keywords
         cypher = """
             UNWIND $keywords AS kw
             MATCH (s:Entity)-[r:RELATION {scope: $scope}]->(o:Entity)
@@ -142,20 +205,18 @@ class KnowledgeBaseRetriever:
         if not graph_triples and not text_chunks:
             return "Sorry, I couldn’t find any relevant information."
 
-        def format_triples_str(triples):
+        def format_json_triples_str(triples):
             return "\n".join(
                 f"{t['Subject']} >> {t['Predicate']} >> {t['Object']}"
                 for t in triples
                 if all(k in t for k in ['Subject', 'Predicate', 'Object'])
             )
-        
-
 
         def clean_text_chunk(text: str) -> str:
-            # Convert escaped unicode to readable characters (e.g. \u2192 → →)
+            # Convert escaped unicode to readable characters
             text = text.encode().decode('unicode_escape')
 
-            # Remove emojis and other unicode symbols (you can fine-tune this regex if needed)
+            # Remove emojis and other unicode symbols
             text = re.sub(r"[^\w\s.,:;()\-\'\"%]", "", text)
 
             # Replace multiple newlines or spaces with a single newline or space
@@ -168,10 +229,7 @@ class KnowledgeBaseRetriever:
         def clean_text_chunks(chunks: list[str]) -> list[str]:
             return [clean_text_chunk(chunk) for chunk in chunks]
 
-
-
         cleaned_chunks = clean_text_chunks(text_chunks)
-
 
         system_prompt = """
         You are a helpful assistant called Local-First AI, developed by Anish Khadka.
@@ -192,7 +250,7 @@ class KnowledgeBaseRetriever:
         {question}
 
         Graph Triples:
-        {format_triples_str(graph_triples)}
+        {graph_triples}
 
         Text Chunks:
         {cleaned_chunks}
@@ -200,7 +258,18 @@ class KnowledgeBaseRetriever:
         Answer:
         """
         print(user_prompt)
-        return self._get_model(user_prompt,model=model_name, system_prompt=system_prompt).strip()
+
+        answer, updated_history = self._get_model(
+        prompt=user_prompt,
+        model=model_name,
+        system_prompt=system_prompt,
+        history=st.session_state.get("chat_history", []))
+        
+        st.session_state["chat_history"] = updated_history
+        # return self._get_model(user_prompt,model=model_name, system_prompt=system_prompt).strip()
+        return answer.strip()
+
+
 
 
 if __name__ == "__main__":

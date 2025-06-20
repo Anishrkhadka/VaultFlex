@@ -5,6 +5,7 @@ from src.utils.service_status import get_backend_status
 from src.ui.chat_ui import run_chat_ui
 import os
 from src.config import LLM_MODEL, GOLD_DIR
+from PIL import Image
 
 st.set_page_config(page_title="Chatbot with GraphRAG and RAG", layout="centered")
 
@@ -84,7 +85,6 @@ def render_backend_status_footer():
         """
 
     # --- Pills
-    model = pill(f"Model: {LLM_MODEL}", "🧠", "#8e24aa")
     ollama = pill("Ollama: Running" if status["ollama"] else "Ollama: Down", 
                   "✅" if status["ollama"] else "❌", 
                   "#2e7d32" if status["ollama"] else "#c62828")
@@ -93,7 +93,7 @@ def render_backend_status_footer():
                  "#1565c0" if status["neo4j"] else "#c62828")
 
     # --- Show all pills
-    st.markdown(model + ollama + neo4j, unsafe_allow_html=True)
+    st.markdown(ollama + neo4j, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
     # --- Footer Text
@@ -106,6 +106,8 @@ def render_backend_status_footer():
         unsafe_allow_html=True
     )
 
+if "chat_history" not in st.session_state:
+    st.session_state["chat_history"] = []
 
 
 # --- Main Views ---
@@ -117,11 +119,26 @@ if st.session_state["view"] == "Welcome":
         st.session_state["view"] = "Ingest"
         st.rerun()
 
+
+    # --- Centre the logo ---
+    logo = Image.open("doc/images/vaultFlex_logo.png")
+    col1, col2, col3 = st.columns([1, 0.6, 1])
+    with col1:
+        st.empty()
+    with col2:
+        st.image(logo, width=120)
+    with col3:
+        st.empty()
     # --- App Title ---
-    st.markdown("<div style='text-align: center;'>"
-                "<h1>VaultFlex</h1>"
-                "<p style='font-size:1.2em; color: gray;'>Chat with your knowledge</p>"
-                "</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div style='text-align: center;'>
+            <h1>VaultFlex</h1>
+            <p style='font-size:1.2em; color: gray;'>Chat with your knowledge</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+)
 
     # --- Load Knowledge Bases ---
     if not os.path.exists(KB_DIR):
@@ -153,7 +170,7 @@ if st.session_state["view"] == "Welcome":
 
     # --- Question Form ---
     with st.form("ask_form", clear_on_submit=True):
-        query = st.text_input("Ask a question...", placeholder="Ask a question...")
+        query = st.text_input("Ask a question", placeholder="Ask a question...")
         submitted = st.form_submit_button("Ask")
 
     if submitted:
@@ -175,5 +192,3 @@ elif st.session_state["view"] == "Ingest":
 elif st.session_state["view"] == "Chat":
     run_chat_ui()
     
-# --- Footer ---
-
