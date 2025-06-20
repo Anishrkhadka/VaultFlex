@@ -14,7 +14,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from src.config import get_scope_paths, CHUNK_SIZE, CHUNK_OVERLAP, HASH_TRACK_FILE, EMBEDDING_MODEL
-from src.data_ingestion.graph_builder_llm import GraphBuilderLLM
+from src.vector.graph_builder_llm import GraphBuilderLLM
 
 
 class KnowledgeBaseIngestor:
