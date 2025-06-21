@@ -1,3 +1,16 @@
+"""
+embedder.py
+
+Defines the `KnowledgeBaseIngestor` class, which handles the ingestion pipeline
+for a single knowledge base (scope) in VaultFlex.
+
+Responsibilities:
+- Load and hash uploaded documents (bronze layer)
+- Chunk documents into segments (silver layer)
+- Generate and persist embeddings using FAISS (gold layer)
+- Extract semantic triples via LLM and store in Neo4j
+"""
+
 import os
 import json
 import hashlib
@@ -18,14 +31,36 @@ from src.vector.llm_graph_builder import GraphBuilderLLM
 
 
 class KnowledgeBaseIngestor:
+    """
+    Main class to orchestrate the ingestion of documents into VaultFlex's medallion pipeline.
+
+    This includes:
+    - File deduplication via hashing
+    - Document loading and chunking
+    - FAISS embedding index creation
+    - Graph-based triple extraction via LLM
+    """
+
     def __init__(self, scope: str):
+        """
+        Args:
+            scope (str): Name of the knowledge base or dataset
+        """
         self.scope = scope
         self.paths = get_scope_paths(scope)
         os.makedirs(self.paths["bronze"], exist_ok=True)
         os.makedirs(self.paths["gold"], exist_ok=True)
- 
 
-    def get_file_hash(self, file_obj):
+    def get_file_hash(self, file_obj) -> str:
+        """
+        Compute SHA-256 hash of a file.
+
+        Args:
+            file_obj (Path or file-like): Local file or Streamlit upload
+
+        Returns:
+            str: Hexadecimal hash string
+        """
         hasher = hashlib.sha256()
         if hasattr(file_obj, "read") and callable(file_obj.read):
             file_bytes = file_obj.read()
@@ -36,7 +71,16 @@ class KnowledgeBaseIngestor:
         hasher.update(file_bytes)
         return hasher.hexdigest()
 
-    def is_already_ingested(self, file_path):
+    def is_already_ingested(self, file_path: Path) -> bool:
+        """
+        Check if the file has already been processed by comparing stored hashes.
+
+        Args:
+            file_path (Path): Path to the file
+
+        Returns:
+            bool: True if the file is already ingested
+        """
         file_hash = self.get_file_hash(file_path)
         scoped_key = f"{self.scope}/{file_path.name}"
 
@@ -54,7 +98,13 @@ class KnowledgeBaseIngestor:
             json.dump(ingested, f, indent=2)
         return False
 
-    def load_documents(self):
+    def load_documents(self) -> list:
+        """
+        Load all new documents from the bronze layer, skipping duplicates.
+
+        Returns:
+            list[Document]: LangChain-compatible document objects
+        """
         docs = []
         for file_path in Path(self.paths["bronze"]).glob("*"):
             ext = file_path.suffix.lower()
@@ -77,16 +127,40 @@ class KnowledgeBaseIngestor:
                 print(f"Error loading {file_path.name}: {e}")
         return docs
 
-    def split_documents(self, docs):
-        splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
+    def split_documents(self, docs: list) -> list:
+        """
+        Split documents into overlapping chunks.
+
+        Args:
+            docs (list): List of LangChain Document objects
+
+        Returns:
+            list: List of chunked documents
+        """
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=CHUNK_SIZE,
+            chunk_overlap=CHUNK_OVERLAP
+        )
         return splitter.split_documents(docs)
 
-    def save_chunks_to_silver(self, chunks):
+    def save_chunks_to_silver(self, chunks: list):
+        """
+        Persist cleaned chunks as JSON to the silver layer.
+
+        Args:
+            chunks (list): Chunked documents to save
+        """
         chunk_data = [doc.dict() for doc in chunks]
         with open(self.paths["silver"], "w", encoding="utf-8") as f:
             json.dump(chunk_data, f, ensure_ascii=False, indent=2)
 
-    def store_embeddings(self, chunks):
+    def store_embeddings(self, chunks: list):
+        """
+        Generate vector embeddings and save them as a FAISS index.
+
+        Args:
+            chunks (list): List of chunked documents
+        """
         if not chunks:
             print("No chunks to store in FAISS.")
             return
@@ -99,6 +173,13 @@ class KnowledgeBaseIngestor:
             print(f"Error saving FAISS index: {e}")
 
     def ingest(self):
+        """
+        Full ingestion pipeline:
+        - Load and deduplicate documents
+        - Chunk and save cleaned text
+        - Embed and index into FAISS
+        - Extract triples and build graph
+        """
         raw_docs = self.load_documents()
         if not raw_docs:
             print(f"No new documents for scope: {self.scope}")
@@ -109,7 +190,13 @@ class KnowledgeBaseIngestor:
         self.store_embeddings(chunks)
         self.build_graph(chunks)
 
-    def chunk_only(self):
+    def chunk_only(self) -> list:
+        """
+        Run only the loading and chunking stages.
+
+        Returns:
+            list: List of text chunks (LangChain Document format)
+        """
         raw_docs = self.load_documents()
         if not raw_docs:
             print(f"No new documents for scope: {self.scope}")
@@ -118,10 +205,22 @@ class KnowledgeBaseIngestor:
         self.save_chunks_to_silver(chunks)
         return chunks
 
-    def embed_only(self, chunks):
+    def embed_only(self, chunks: list):
+        """
+        Run only the embedding and FAISS storage step.
+
+        Args:
+            chunks (list): Chunked documents
+        """
         self.store_embeddings(chunks)
 
-    def build_graph(self, chunks):
+    def build_graph(self, chunks: list):
+        """
+        Run knowledge graph extraction via LLM and push to Neo4j.
+
+        Args:
+            chunks (list): Chunked documents to extract triples from
+        """
         graph_builder = GraphBuilderLLM()
         try:
             graph_builder.process_chunks(chunks, self.scope)

@@ -1,9 +1,32 @@
+"""
+chat_ui.py
+
+This module defines the Streamlit-based chat interface for VaultFlex.
+It allows users to ask questions against an indexed knowledge base (KB),
+and receive answers via an LLM-powered retrieval system.
+
+Key components:
+- Streamlit UI to display and handle chat interactions
+- Scoped knowledge base selection
+- Retrieval using FAISS (vector) and optional graph context
+"""
+
 import streamlit as st
 from src.utils.file_utils import get_existing_scopes
 from src.config import GOLD_DIR
 from src.vector.retriever import KnowledgeBaseRetriever
 
 def run_chat_ui():
+    """
+    Launches the VaultFlex chat interface via Streamlit.
+
+    This function:
+    - Loads the selected KB and model from the session
+    - Validates the availability of the KB
+    - Manages chat history state
+    - Displays previous messages
+    - Captures user input and generates responses using `KnowledgeBaseRetriever`
+    """
     st.markdown("<h1 style='text-align: center;'>💬 VaultFlex Chat</h1>", unsafe_allow_html=True)
 
     retriever = KnowledgeBaseRetriever()
@@ -24,36 +47,36 @@ def run_chat_ui():
         st.session_state.messages = []
         st.session_state.last_scope = selected_scope
 
-    # --- Chat history state ---
+    # --- Initialise chat state if missing ---
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # --- Back to Home ---
+    # --- Back to Home Button ---
     if st.button("🔙 Back to Home"):
         st.session_state["view"] = "Welcome"
         st.session_state.pop("messages", None)
         st.session_state.pop("query", None)
         st.rerun()
 
-    # --- Display selected scope + model ---
+    # --- Display active KB and LLM model ---
     st.markdown(f"<p style='text-align: center; color: gray;'>"
                 f"Using KB: <b>{selected_scope}</b> | Model: <b>{selected_model}</b></p>",
                 unsafe_allow_html=True)
 
     st.divider()
 
-    # --- Show Chat History ---
+    # --- Display chat history ---
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # --- Show chat input box always ---
+    # --- Get user input ---
     user_input = st.chat_input("Ask a question...")
 
-    # --- Use initial query from session (once) ---
+    # --- Check if there’s a preloaded prompt (e.g., redirected from home page form) ---
     prompt = st.session_state.pop("query", None)
 
-    # Prefer session query first, then normal input
+    # Use session-passed query first, then fallback to user input
     if prompt is None:
         prompt = user_input
 
@@ -76,6 +99,5 @@ def run_chat_ui():
                     answer = f"❌ Error: {e}"
                     st.error(answer)
 
+        # Store assistant's message in session
         st.session_state.messages.append({"role": "assistant", "content": answer})
-
-

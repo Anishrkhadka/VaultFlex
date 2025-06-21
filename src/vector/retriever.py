@@ -1,13 +1,24 @@
+"""
+retriever.py
+
+This module defines the `KnowledgeBaseRetriever` class, which is responsible for:
+- Rewriting user queries via LLM for clarity and specificity
+- Retrieving semantically relevant chunks using FAISS (dense retrieval)
+- Extracting keywords for graph queries
+- Running Cypher queries over scoped Neo4j subgraphs
+- Generating answers using a local LLM based on retrieved text and triples
+"""
+
 import requests
 import json
 import time
+import re
 from typing import List, Dict
+
 from neo4j import GraphDatabase
 from sklearn.feature_extraction.text import TfidfVectorizer
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-import re
-import html
 import streamlit as st
 
 from src.config import (
@@ -21,32 +32,30 @@ from src.config import (
 
 class KnowledgeBaseRetriever:
     """
-    A class to retrieve information and answer questions based on knowledge base.
+    Retrieves information from FAISS and Neo4j based on user questions.
+    Enhances queries using LLM and returns factual answers.
     """
 
     def __init__(self, neo4j_uri=NEO4J_URI, neo4j_user=NEO4J_USER, neo4j_password=NEO4J_PASSWORD):
-        """
-        Initializes the KnowledgeBaseRetriever.
-
-        Args:
-            neo4j_uri: The URI of the Neo4j database.
-            neo4j_user: The username for the Neo4j database.
-            neo4j_password: The password for the Neo4j database.
-        """
         self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
 
     def _get_model_no_memory(self, prompt: str, model: str = LLM_MODEL, system_prompt: str = None) -> str:
+        """
+        Sends a prompt to the LLM endpoint (stateless mode).
+
+        Args:
+            prompt: User message.
+            model: Model name to query (Ollama).
+            system_prompt: Optional system instructions.
+
+        Returns:
+            str: Model's plain response.
+        """
         url = "http://localhost:11434/api/generate"
         headers = {"Content-Type": "application/json"}
-
-        # Combine system prompt + user prompt
         full_prompt = f"{system_prompt.strip()}\n\n{prompt.strip()}" if system_prompt else prompt
 
-        payload = {
-            "model": model,
-            "prompt": full_prompt,
-            "stream": False
-        }
+        payload = {"model": model, "prompt": full_prompt, "stream": False}
 
         for attempt in range(3):
             try:
@@ -59,41 +68,37 @@ class KnowledgeBaseRetriever:
 
         return ""
 
-    
-    def _get_model(
-        self,
-        prompt: str = None,
-        model: str = LLM_MODEL,
-        system_prompt: str = None,
-        history: list = None
-    ) -> str:
+    def _get_model(self, prompt: str = None, model: str = LLM_MODEL,
+                   system_prompt: str = None, history: list = None) -> str:
+        """
+        Sends a prompt to the LLM in chat mode, optionally with memory.
+
+        Args:
+            prompt: Current user message.
+            model: Model name (Ollama).
+            system_prompt: Initial system instructions.
+            history: List of prior messages in OpenAI chat format.
+
+        Returns:
+            Tuple[str, List[dict]]: (response, updated chat history)
+        """
         url = "http://localhost:11434/api/chat"
         headers = {"Content-Type": "application/json"}
 
-        # Use history or start fresh
         messages = history[:] if history else []
-
-        # Add system prompt only once (if not already in history)
         if system_prompt and not any(m["role"] == "system" for m in messages):
             messages.insert(0, {"role": "system", "content": system_prompt})
 
-        # Append current prompt
         if prompt:
             messages.append({"role": "user", "content": prompt})
 
-        payload = {
-            "model": model,
-            "messages": messages,
-            "stream": False
-        }
+        payload = {"model": model, "messages": messages, "stream": False}
 
         for attempt in range(3):
             try:
                 resp = requests.post(url, headers=headers, json=payload, timeout=30)
                 resp.raise_for_status()
                 reply = resp.json()["message"]["content"].strip()
-
-                # Optional: return both reply and messages for future continuation
                 return reply, messages + [{"role": "assistant", "content": reply}]
             except Exception as e:
                 print(f"[LLM Error] Attempt {attempt + 1}: {e}")
@@ -101,31 +106,30 @@ class KnowledgeBaseRetriever:
 
         return "", messages
 
-
     def _run_cypher(self, query: str, params: dict = None) -> List[Dict]:
         """
-        Executes a Cypher query against the Neo4j database.
+        Executes a Cypher query on Neo4j.
 
         Args:
-            query: The Cypher query to execute.
-            params: Optional parameters for the query.
+            query: Cypher string.
+            params: Optional dictionary of query parameters.
 
         Returns:
-            A list of dictionaries representing the results of the query.
+            List of results as dictionaries.
         """
         with self.driver.session() as session:
             return session.run(query, params or {}).data()
 
     def retrieve_docs(self, question: str, scope: str) -> List[str]:
         """
-        Retrieves relevant documents from the vector database.
+        Uses FAISS to retrieve top-k documents relevant to the question.
 
         Args:
-            question: The question to use for the search.
-            scope: The scope of the knowledge base.
+            question: The query string.
+            scope: The knowledge base scope.
 
         Returns:
-            A list of strings, where each string is a document.
+            List of relevant text chunks.
         """
         vector_path = f"data/gold/{scope}"
         embedder = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
@@ -135,29 +139,38 @@ class KnowledgeBaseRetriever:
 
     def extract_keywords(self, texts: List[str], top_k: int = 5) -> List[str]:
         """
-        Extracts keywords from a list of texts.
+        Extracts top-k keywords from a list of documents using TF-IDF.
 
         Args:
-            texts: A list of strings, where each string is a text.
-            top_k: The number of top keywords to extract.
+            texts: Document strings.
+            top_k: Number of keywords to extract.
 
         Returns:
-            A list of strings, where each string is a keyword.
+            List of keywords.
         """
         vectorizer = TfidfVectorizer(stop_words="english", max_features=1000)
         X = vectorizer.fit_transform(texts)
-        scores = zip(vectorizer.get_feature_names_out(), X.toarray().sum(axis=0))  # sum across all docs
+        scores = zip(vectorizer.get_feature_names_out(), X.toarray().sum(axis=0))
         sorted_terms = sorted(scores, key=lambda x: x[1], reverse=True)
         return [term.lower() for term, _ in sorted_terms[:top_k]]
 
     def rewrite_question(self, question: str, model_name: str) -> str:
+        """
+        Rewrites a user query for clarity using the LLM.
+
+        Args:
+            question: The original question.
+            model_name: LLM model to use.
+
+        Returns:
+            Rewritten question as plain text.
+        """
         system_prompt = (
             "You are an AI assistant that rewrites vague or informal user questions "
             "into clearer, more specific ones suitable for knowledge base search. "
-            "Do not add any comments, explanations, or labels — return only the improved question as a single plain sentence."
-            )
+            "Do not add any comments, explanations, or labels — return only the improved question."
+        )
 
-        
         user_prompt = f"""
         Original Question:
         {question}
@@ -167,62 +180,47 @@ class KnowledgeBaseRetriever:
 
         return self._get_model_no_memory(user_prompt, model=model_name, system_prompt=system_prompt).strip()
 
-
-    def answer_with_keywords_and_chunks(self, question: str, scope: str, model_name:str) -> str:
+    def answer_with_keywords_and_chunks(self, question: str, scope: str, model_name: str) -> str:
         """
-        Answers a question based on the knowledge base.
+        Full RAG pipeline: Rewrites question, retrieves chunks, queries graph, and generates an answer.
 
         Args:
-            question: The question to answer.
-            scope: The scope of the knowledge base.
+            question: The user input.
+            scope: The knowledge base scope.
+            model_name: Which LLM to use.
 
         Returns:
-            The answer to the question.
+            Final assistant answer string.
         """
-        #Step 1, rewrite the question 
         rewritten_question = self.rewrite_question(question, model_name)
         print(f"Rewritten Question: {rewritten_question}")
 
-        # Step 2: FAISS retrieval
         text_chunks = self.retrieve_docs(rewritten_question, scope)
+        keywords = self.extract_keywords(text_chunks)
+        print(f"Keywords: {keywords}")
 
-        # Step 3: Extract keywords from FAISS chunks, not the question
-        keywords = self.extract_keywords(text_chunks)  # Pass text_chunks directly
-        print(f"keywords: {keywords}")
-
-        # Step 4: Graph query using extracted keywords
+        # Graph query
         cypher = """
             UNWIND $keywords AS kw
             MATCH (s:Entity)-[r:RELATION {scope: $scope}]->(o:Entity)
             WHERE toLower(s.name) CONTAINS kw OR toLower(o.name) CONTAINS kw
             RETURN s.name AS Subject, r.type AS Predicate, o.name AS Object
             LIMIT 25
-            """
+        """
         graph_triples = self._run_cypher(cypher, {"keywords": keywords, "scope": scope})
         print(json.dumps(graph_triples, indent=2))
 
-        # Step 4: Combine and answer
         if not graph_triples and not text_chunks:
             return "Sorry, I couldn’t find any relevant information."
 
         def clean_text_chunk(text: str) -> str:
-            # Convert escaped unicode to readable characters
             text = text.encode().decode('unicode_escape')
-
-            # Remove emojis and other unicode symbols
             text = re.sub(r"[^\w\s.,:;()\-\'\"%]", "", text)
-
-            # Replace multiple newlines or spaces with a single newline or space
             text = re.sub(r'\n+', '\n', text)
             text = re.sub(r'\s{2,}', ' ', text)
-
-            # Strip leading/trailing whitespace
             return text.strip()
 
-        def clean_text_chunks(chunks: list[str]) -> list[str]:
-            return [clean_text_chunk(chunk) for chunk in chunks]
-
-        cleaned_chunks = clean_text_chunks(text_chunks)
+        cleaned_chunks = [clean_text_chunk(chunk) for chunk in text_chunks]
 
         system_prompt = """
         You are a helpful assistant called Local-First AI, developed by Anish Khadka.
@@ -231,13 +229,11 @@ class KnowledgeBaseRetriever:
         - A list of structured triples from a graph database
         - A list of retrieved text documents
 
-        If the user's message is a greeting (e.g., "hello", "hi", "hey"), respond with a friendly greeting back.
+        If the user's message is a greeting, respond accordingly.
 
-        Otherwise, use ONLY the provided information (triples and text) to answer their question factually. 
-        Do NOT make things up or guess beyond the given data.
-
-        If there's not enough information to answer, say so politely.
+        Otherwise, use ONLY the provided data to answer. Never guess or hallucinate.
         """
+
         user_prompt = f"""
         Question:
         {rewritten_question}
@@ -253,21 +249,19 @@ class KnowledgeBaseRetriever:
         print(user_prompt)
 
         answer, updated_history = self._get_model(
-        prompt=user_prompt,
-        model=model_name,
-        system_prompt=system_prompt,
-        history=st.session_state.get("chat_history", []))
-        
+            prompt=user_prompt,
+            model=model_name,
+            system_prompt=system_prompt,
+            history=st.session_state.get("chat_history", [])
+        )
         st.session_state["chat_history"] = updated_history
 
         return answer.strip()
-
-
 
 
 if __name__ == "__main__":
     retriever = KnowledgeBaseRetriever()
     question = "What is the capital of France?"
     scope = "France"
-    answer = retriever.answer_with_keywords_and_chunks(question, scope)
+    answer = retriever.answer_with_keywords_and_chunks(question, scope, model_name=LLM_MODEL)
     print(answer)
