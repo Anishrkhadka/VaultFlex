@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [v1.0.0] – 2025-06-21
+
+### Added
+- **First release** of VaultFex
+- End-to-end system: ingestion, embedding, graph construction, and querying
+- Complete **demo video** demonstrating scoped knowledge interaction
+- Fully structured and aligned **Project Charter** 
+- Inline **docstrings** and code comments for all core modules (FAISS, GraphRAG, LLM coordination)
+- Streamlit UI with:
+  - Dataset scoping and ingestion flow
+  - LLM and Knowledge Base switching
+  - Hybrid FAISS + Neo4j GraphRAG chat
+- Mermaid diagrams showing Medallion architecture
+
+### Changed
+- Final UI polish for first stable release
+- Documentation updated to reflect working v1 architecture and flows
+
+---
 ## [Unreleased] – 2025-06-20
 
 ### Added
