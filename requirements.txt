@@ -1,0 +1,18 @@
+# Core language and pipeline tools
+langchain
+sentence-transformers
+faiss-cpu
+langchain-community
+
+
+# File loaders and parsing
+PyMuPDF            # for PDFs
+python-docx        # for DOCX
+unstructured       # for parsing DOCX, MD
+markdown           # for MD support
+
+# HTTP requests for Ollama API
+requests
+
+# Web app frontend
+streamlit

@@ -2,10 +2,10 @@
 config.py
 
 Configuration module for global constants, environment variables,
-and directory paths used throughout the RAG Chatbot project.
+and directory paths used throughout the VaultFlex RAG system.
 
 Includes:
-- Medallion architecture paths (Bronze/Silver/Gold)
+- Medallion architecture paths (Bronze / Silver / Gold)
 - LLM and embedding model configuration
 - Neo4j connection details
 - Chunking parameters for text splitting
@@ -15,27 +15,26 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file (if present)
+# --- Load environment variables from `.env` file (if present) ---
 load_dotenv()
 
-# Project Directory Paths
-
-# Base data structure: Bronze -> Silver -> Gold
+# --- Medallion Architecture Directory Paths ---
 BASE_DIR = Path("data")
+
 BRONZE_DIR = BASE_DIR / "bronze"  # Raw uploaded documents
-SILVER_DIR = BASE_DIR / "silver"  # JSON chunk output
-GOLD_DIR = BASE_DIR / "gold"      # FAISS vector index
-HASH_TRACK_FILE = BASE_DIR / "ingested_hashes.json"  # Tracks SHA-256 per file
+SILVER_DIR = BASE_DIR / "silver"  # Cleaned + chunked JSON
+GOLD_DIR = BASE_DIR / "gold"      # FAISS index / graph output
+HASH_TRACK_FILE = BASE_DIR / "ingested_hashes.json"  # Tracks SHA-256 per ingested file
 
 def get_scope_paths(scope_name: str) -> dict:
     """
-    Return all layer paths (bronze/silver/gold) for a given dataset scope.
+    Returns all layer paths for a given dataset scope.
 
     Args:
-        scope_name (str): Name of the dataset scope (e.g. "company_docs")
+        scope_name (str): Name of the dataset (e.g. "climate_docs")
 
     Returns:
-        dict[str, Path]: Dictionary containing paths for bronze, silver, and gold
+        dict[str, Path]: Paths for 'bronze', 'silver', and 'gold'
     """
     return {
         "bronze": BRONZE_DIR / scope_name,
@@ -43,17 +42,17 @@ def get_scope_paths(scope_name: str) -> dict:
         "gold": GOLD_DIR / scope_name,
     }
 
-# LLM + Embedding Models
-LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1:7b")  # LLM used via Ollama
+# --- LLM Configuration ---
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1:7b")  # Used for answering queries
+LLM_MODEL_EMBEDDING_MODEL = os.getenv("LLM_MODEL_EMBEDDING_MODEL", "gemma3:4b")  # Used for graph extraction
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
+# --- Text Chunking Parameters ---
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1000))        # Number of characters per chunk
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 200))   # Overlap between chunks
 
-# Chunking Parameters
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))          # Characters per chunk
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))    # Characters of overlap
-
-
-# Neo4j Configuration
+# --- Neo4j Graph Database Credentials ---
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")

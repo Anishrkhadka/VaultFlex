@@ -1,37 +1,38 @@
-# Shared helper functions
 """
 file_utils.py
 
-General-purpose utility functions for:
-- File hashing
-- Dataset scope discovery
-- Ingestion deduplication
+Utility functions for file handling within the VaultFlex ingestion pipeline.
 
-Used by Streamlit UI, CLI tools, and core pipelines.
+Responsibilities:
+- File deduplication via SHA-256 hashing
+- Scope discovery (from folder structure)
+- Determining which uploaded files have already been ingested
 """
 
 import hashlib
 import json
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, BinaryIO
 from src.config import HASH_TRACK_FILE
 
 
-def get_file_hash(file_obj: Union[Path, any]) -> str:
+def get_file_hash(file_obj: Union[Path, BinaryIO]) -> str:
     """
-    Compute SHA-256 hash of a file.
+    Compute a SHA-256 hash for a given file.
 
     Args:
-        file_obj (Path or Streamlit UploadedFile): File to hash
+        file_obj (Path or file-like object): File to hash.
+            Can be a local Path or Streamlit UploadedFile.
 
     Returns:
-        str: Hexadecimal hash string
+        str: Hexadecimal SHA-256 hash string.
     """
     hasher = hashlib.sha256()
 
     if hasattr(file_obj, "read") and callable(file_obj.read):
+        # e.g., Streamlit UploadedFile
         file_bytes = file_obj.read()
-        file_obj.seek(0)
+        file_obj.seek(0)  # Reset for re-reading later
     else:
         with open(file_obj, "rb") as f:
             file_bytes = f.read()
@@ -42,35 +43,38 @@ def get_file_hash(file_obj: Union[Path, any]) -> str:
 
 def get_existing_scopes(bronze_dir: Path) -> List[str]:
     """
-    List all dataset scopes (subdirectories) in the bronze layer.
+    List all existing knowledge base scopes (directories) in the bronze layer.
 
     Args:
-        bronze_dir (Path): Path to /data/bronze
+        bronze_dir (Path): Path to the 'bronze' directory.
 
     Returns:
-        list[str]: Sorted list of scope names
+        List[str]: Sorted list of scope names (directory names).
     """
     return sorted([p.name for p in bronze_dir.iterdir() if p.is_dir()])
 
 
 def check_ingested_status(
     scope_name: str,
-    files: List[any],
+    files: List[BinaryIO],
     hash_file: Path = HASH_TRACK_FILE
-) -> Tuple[List[str], List[any]]:
+) -> Tuple[List[str], List[BinaryIO]]:
     """
-    Determine which uploaded files are new vs. already ingested.
+    Check which uploaded files are new vs. already ingested (based on hash tracking).
 
     Args:
-        scope_name (str): Dataset name
-        files (list[UploadedFile]): Files from Streamlit upload
-        hash_file (Path): Path to hash tracker JSON
+        scope_name (str): The dataset scope (e.g., "hr_docs").
+        files (List[UploadedFile]): List of files uploaded via Streamlit.
+        hash_file (Path, optional): Path to the JSON file that stores ingested hashes.
+            Defaults to HASH_TRACK_FILE.
 
     Returns:
-        (list[str], list[UploadedFile]): Already ingested filenames, new files
+        Tuple[List[str], List[UploadedFile]]:
+            - List of filenames already ingested
+            - List of UploadedFile objects that are new
     """
     if hash_file.exists():
-        with open(hash_file, "r") as f:
+        with open(hash_file, "r", encoding="utf-8") as f:
             ingested = json.load(f)
     else:
         ingested = {}
