@@ -6,6 +6,10 @@
 # VaultFlex 
 **Chat with your Knowledge** using a hybrid RAG pipeline (Vector + Graph). Built for teams that want full control over their data.
 
+<p align="center">
+  <img src="doc/images/demo.gif" alt="VaultFlex Logo" width="400"/>
+</p>
+
 ## 🚀 Features
 
 - 📁 **Flexible Knowledge Base Scopes** — create isolated workspaces per domain or project

@@ -178,7 +178,7 @@ class KnowledgeBaseRetriever:
         Improved Question (return only the question, no other text):
         """
 
-        return self._get_model_no_memory(user_prompt, model=model_name, system_prompt=system_prompt).strip()
+        return self._get_model_no_memory(user_prompt, model="gemma3:latest", system_prompt=system_prompt).strip()
 
     def answer_with_keywords_and_chunks(self, question: str, scope: str, model_name: str) -> str:
         """
@@ -237,7 +237,7 @@ class KnowledgeBaseRetriever:
         user_prompt = f"""
         Question:
         {rewritten_question}
-
+        
         Graph Triples:
         {graph_triples}
 
@@ -248,11 +248,13 @@ class KnowledgeBaseRetriever:
         """
         print(user_prompt)
 
+        chat_history = st.session_state.get("chat_history", [])
+
         answer, updated_history = self._get_model(
             prompt=user_prompt,
             model=model_name,
             system_prompt=system_prompt,
-            history=st.session_state.get("chat_history", [])
+            history=chat_history
         )
         st.session_state["chat_history"] = updated_history
 
