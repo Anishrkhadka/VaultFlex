@@ -159,7 +159,7 @@ Supports: `deepseek-r1`, `gemma3`, or anything via `Ollama`.
 pip install -r requirements.txt
 
 # 3. Update .env (see env_template)
-update .env
+# update .env
 
 # 4. Launch the UI
 streamlit run app.py
