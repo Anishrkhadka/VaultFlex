@@ -14,7 +14,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from src.config import get_scope_paths, CHUNK_SIZE, CHUNK_OVERLAP, HASH_TRACK_FILE, EMBEDDING_MODEL
-from src.vector.graph_builder_llm import GraphBuilderLLM
+from src.vector.llm_graph_builder import GraphBuilderLLM
 
 
 class KnowledgeBaseIngestor:
@@ -23,6 +23,7 @@ class KnowledgeBaseIngestor:
         self.paths = get_scope_paths(scope)
         os.makedirs(self.paths["bronze"], exist_ok=True)
         os.makedirs(self.paths["gold"], exist_ok=True)
+ 
 
     def get_file_hash(self, file_obj):
         hasher = hashlib.sha256()

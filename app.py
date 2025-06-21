@@ -1,8 +1,8 @@
 import streamlit as st
 from src.__version__ import __version__
-from src.ui.data_ingest_ui import run_ingestion_ui
+from src.frontent.kb_ingest_ui import run_ingestion_ui
 from src.utils.service_status import get_backend_status
-from src.ui.chat_ui import run_chat_ui
+from src.frontent.chat_ui import run_chat_ui
 import os
 from src.config import LLM_MODEL, GOLD_DIR
 from PIL import Image

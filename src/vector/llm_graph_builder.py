@@ -49,7 +49,9 @@ class GraphBuilderLLM:
             session.run(
                 """
                 MERGE (s:Entity {name: $subject})
+                ON CREATE SET s.scope = $scope
                 MERGE (o:Entity {name: $object})
+                ON CREATE SET o.scope = $scope
                 MERGE (s)-[r:RELATION {type: $predicate, scope: $scope}]->(o)
                 """,
                 subject=subject,
@@ -125,20 +127,53 @@ class GraphBuilderLLM:
         return []
 
 
-    def process_chunks(self, chunks, scope):
-        total = 0
-        inserted = 0
+    # def process_chunks(self, chunks, scope):
+    #     total = 0
+    #     inserted = 0
+    #     print(f"[GRAPH] Building graph for scope: {scope}")
+    #     for chunk in chunks:
+    #         text = chunk.page_content
+    #         triples = self.extract_triples_with_llm(text)
+    #         total += len(triples)
+    #         for triple in triples:
+    #             s = triple.get("subject")
+    #             p = triple.get("predicate")
+    #             o = triple.get("object")
+    #             if s and p and o:
+    #                 self.insert_triple(s, p, o, scope)
+    #                 inserted += 1
+    #     print(f"[GRAPH] Extracted {total} triples, inserted {inserted}")
+
+    def process_chunks(self, chunks, scope: str):
+        total_triples = 0
+        inserted_triples = 0
+        skipped_triples = 0
+
         print(f"[GRAPH] Building graph for scope: {scope}")
+        
         for chunk in chunks:
-            text = chunk.page_content
+            text = chunk.page_content.strip()
+            if not text:
+                continue
+
             triples = self.extract_triples_with_llm(text)
-            total += len(triples)
+            total_triples += len(triples)
+
             for triple in triples:
-                s = triple.get("subject")
-                p = triple.get("predicate")
-                o = triple.get("object")
-                if s and p and o:
+                s = triple.get("subject", "").strip()
+                p = triple.get("predicate", "").strip()
+                o = triple.get("object", "").strip()
+
+                if all([s, p, o]):
                     self.insert_triple(s, p, o, scope)
-                    inserted += 1
-        print(f"[GRAPH] Extracted {total} triples, inserted {inserted}")
+                    inserted_triples += 1
+                else:
+                    skipped_triples += 1
+                    print(f"[WARN] Skipped malformed triple: {triple}")
+
+        print(f"[GRAPH] Extracted {total_triples} triples")
+        print(f"[GRAPH] Inserted  {inserted_triples} triples")
+        if skipped_triples:
+            print(f"[GRAPH] Skipped   {skipped_triples} malformed triples")
+
 

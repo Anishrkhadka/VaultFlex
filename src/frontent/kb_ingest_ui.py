@@ -11,6 +11,7 @@ from src.config import (
 from src.utils.file_utils import get_existing_scopes, check_ingested_status
 from src.vector.embedder import KnowledgeBaseIngestor 
 
+
 def run_ingestion_ui():
     st.title("📥 Knowledge Base Ingestion & Management")
 
@@ -33,6 +34,7 @@ def run_ingestion_ui():
     )
 
     if st.button("📤 Ingest Documents") and scope_name and uploaded_files:
+     
         with st.spinner("🔎 Checking for duplicates..."):
             already_ingested, new_files = check_ingested_status(scope_name, uploaded_files)
 
@@ -48,6 +50,7 @@ def run_ingestion_ui():
                 with open(file_path, "wb") as f:
                     f.write(file.read())
 
+   
             ingestor = KnowledgeBaseIngestor(scope_name)
             progress = st.progress(0)
             status_text = st.empty()
@@ -71,6 +74,8 @@ def run_ingestion_ui():
                 status_text.text("❌ Ingestion failed.")
                 st.error(f"Error: {e}")
 
+      
+
     if scope_option != "<New Knowledge Base>":
         st.divider()
         with st.expander("⚠️ Danger Zone: Delete Knowledge Base"):
@@ -82,10 +87,53 @@ def run_ingestion_ui():
                 st.session_state.clear()
                 st.success("Please refresh manually.")
 
+# def delete_scope(scope_name: str) -> int:
+#     scope_name = scope_name.strip()
+#     paths = get_scope_paths(scope_name)
+
+#     for key in ["bronze", "silver", "gold"]:
+#         path = paths.get(key)
+#         if path and path.exists():
+#             if path.is_file():
+#                 path.unlink()
+#             elif path.is_dir():
+#                 shutil.rmtree(path, ignore_errors=True)
+
+#     deleted_keys = []
+#     if HASH_TRACK_FILE.exists():
+#         with open(HASH_TRACK_FILE, "r", encoding="utf-8") as f:
+#             ingested = json.load(f)
+
+#         prefix = f"{scope_name}/"
+#         deleted_keys = [k for k in ingested if k.startswith(prefix)]
+#         for k in deleted_keys:
+#             ingested.pop(k)
+
+#         with open(HASH_TRACK_FILE, "w", encoding="utf-8") as f:
+#             json.dump(ingested, f, indent=2)
+
+#     try:
+#         driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+#         with driver.session() as session:
+#             session.run(
+#                 "MATCH (s:Entity)-[r:RELATION {scope: $scope}]->(o:Entity) DELETE r",
+#                 scope=scope_name
+#             )
+#             session.run("MATCH (n:Entity) WHERE NOT (n)--() DELETE n")
+#         driver.close()
+#         print(f"[GRAPH] Deleted graph for scope: {scope_name}")
+#     except Exception as e:
+#         print(f"[GRAPH] Error deleting graph for scope {scope_name}: {e}")
+
+#     return len(deleted_keys)
+
+
+
 def delete_scope(scope_name: str) -> int:
     scope_name = scope_name.strip()
     paths = get_scope_paths(scope_name)
 
+    # --- Delete local storage directories/files ---
     for key in ["bronze", "silver", "gold"]:
         path = paths.get(key)
         if path and path.exists():
@@ -94,6 +142,7 @@ def delete_scope(scope_name: str) -> int:
             elif path.is_dir():
                 shutil.rmtree(path, ignore_errors=True)
 
+    # --- Remove from hash tracking file ---
     deleted_keys = []
     if HASH_TRACK_FILE.exists():
         with open(HASH_TRACK_FILE, "r", encoding="utf-8") as f:
@@ -107,16 +156,26 @@ def delete_scope(scope_name: str) -> int:
         with open(HASH_TRACK_FILE, "w", encoding="utf-8") as f:
             json.dump(ingested, f, indent=2)
 
+    # --- Delete graph elements from Neo4j ---
     try:
         driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
         with driver.session() as session:
-            session.run(
-                "MATCH (s:Entity)-[r:RELATION {scope: $scope}]->(o:Entity) DELETE r",
-                scope=scope_name
-            )
-            session.run("MATCH (n:Entity) WHERE NOT (n)--() DELETE n")
+            # Delete all relationships with the given scope
+            session.run("""
+                MATCH ()-[r]-() WHERE r.scope = $scope DELETE r
+            """, scope=scope_name)
+
+            # Delete all nodes with the given scope
+            session.run("""
+                MATCH (n) WHERE n.scope = $scope DELETE n
+            """, scope=scope_name)
+
+            # Optional: delete any remaining orphaned nodes
+            session.run("""
+                MATCH (n) WHERE NOT (n)--() DELETE n
+            """)
         driver.close()
-        print(f"[GRAPH] Deleted graph for scope: {scope_name}")
+        print(f"[GRAPH] Deleted all graph elements for scope: {scope_name}")
     except Exception as e:
         print(f"[GRAPH] Error deleting graph for scope {scope_name}: {e}")
 

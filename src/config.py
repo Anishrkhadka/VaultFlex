@@ -15,11 +15,10 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 
-# Load environment variables from .env file (if present)
+# Load environment variables from .env file 
 load_dotenv()
 
 # Project Directory Paths
-
 # Base data structure: Bronze -> Silver -> Gold
 BASE_DIR = Path("data")
 BRONZE_DIR = BASE_DIR / "bronze"  # Raw uploaded documents
@@ -49,13 +48,9 @@ LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-r1:7b")  # LLM used via Ollama
 LLM_MODEL_EMBEDDING_MODEL = os.getenv("LLM_MODEL_EMBEDDING_MODEL", "gemma3:4b")  # LLM used via Ollama
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
-
-
-
 # Chunking Parameters
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1000))          # Characters per chunk
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 200))    # Characters of overlap
-
 
 # Neo4j Configuration
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")

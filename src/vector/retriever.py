@@ -13,7 +13,6 @@ import streamlit as st
 from src.config import (
     LLM_MODEL,
     EMBEDDING_MODEL,
-    OLLAMA_URL,
     NEO4J_URI,
     NEO4J_USER,
     NEO4J_PASSWORD,
@@ -37,17 +36,15 @@ class KnowledgeBaseRetriever:
         self.driver = GraphDatabase.driver(neo4j_uri, auth=(neo4j_user, neo4j_password))
 
     def _get_model_no_memory(self, prompt: str, model: str = LLM_MODEL, system_prompt: str = None) -> str:
-        url = "http://localhost:11434/api/chat"
+        url = "http://localhost:11434/api/generate"
         headers = {"Content-Type": "application/json"}
-        messages = []
 
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+        # Combine system prompt + user prompt
+        full_prompt = f"{system_prompt.strip()}\n\n{prompt.strip()}" if system_prompt else prompt
 
         payload = {
             "model": model,
-            "messages": messages,
+            "prompt": full_prompt,
             "stream": False
         }
 
@@ -55,12 +52,14 @@ class KnowledgeBaseRetriever:
             try:
                 resp = requests.post(url, headers=headers, json=payload, timeout=30)
                 resp.raise_for_status()
-                return resp.json()["message"]["content"].strip()
+                return resp.json().get("response", "").strip()
             except Exception as e:
                 print(f"[LLM Error] Attempt {attempt + 1}: {e}")
                 time.sleep((attempt + 1) * 1.5)
 
         return ""
+
+    
     def _get_model(
         self,
         prompt: str = None,
@@ -181,11 +180,12 @@ class KnowledgeBaseRetriever:
             The answer to the question.
         """
         #Step 1, rewrite the question 
-        # rewritten_question = self.rewrite_question(question, model_name)
-        # print(f"Rewritten Question: {rewritten_question}")
+        rewritten_question = self.rewrite_question(question, model_name)
+        print(f"Rewritten Question: {rewritten_question}")
 
         # Step 2: FAISS retrieval
-        text_chunks = self.retrieve_docs(question, scope)
+        text_chunks = self.retrieve_docs(rewritten_question, scope)
+
         # Step 3: Extract keywords from FAISS chunks, not the question
         keywords = self.extract_keywords(text_chunks)  # Pass text_chunks directly
         print(f"keywords: {keywords}")
@@ -204,13 +204,6 @@ class KnowledgeBaseRetriever:
         # Step 4: Combine and answer
         if not graph_triples and not text_chunks:
             return "Sorry, I couldn’t find any relevant information."
-
-        def format_json_triples_str(triples):
-            return "\n".join(
-                f"{t['Subject']} >> {t['Predicate']} >> {t['Object']}"
-                for t in triples
-                if all(k in t for k in ['Subject', 'Predicate', 'Object'])
-            )
 
         def clean_text_chunk(text: str) -> str:
             # Convert escaped unicode to readable characters
@@ -247,7 +240,7 @@ class KnowledgeBaseRetriever:
         """
         user_prompt = f"""
         Question:
-        {question}
+        {rewritten_question}
 
         Graph Triples:
         {graph_triples}
@@ -266,7 +259,7 @@ class KnowledgeBaseRetriever:
         history=st.session_state.get("chat_history", []))
         
         st.session_state["chat_history"] = updated_history
-        # return self._get_model(user_prompt,model=model_name, system_prompt=system_prompt).strip()
+
         return answer.strip()
 
 
