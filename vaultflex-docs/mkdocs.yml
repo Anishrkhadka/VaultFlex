@@ -1,0 +1,35 @@
+site_name: VaultFlex
+site_description: "Chat with your knowledge – RAG + Graph + FAISS"
+site_url: https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/
+
+theme:
+  name: material
+  palette:
+    scheme: default
+  features:
+    - navigation.instant
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: false
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - Retriever: reference/retriever.md
+      - Embedder: reference/embedder.md
+      - GraphBuilder: reference/llm_graph_builder.md
+      - UI Components: reference/chat_ui.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true

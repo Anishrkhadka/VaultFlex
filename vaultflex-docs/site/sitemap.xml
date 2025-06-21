@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/chat_ui/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/embedder/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/file_utils/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/kb_ingest_ui/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/llm_graph_builder/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/retriever/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+    <url>
+         <loc>https://github.com/Anishrkhadka/VaultFlex/vaultflex-docs/reference/service_status/</loc>
+         <lastmod>2025-06-21</lastmod>
+    </url>
+</urlset>
